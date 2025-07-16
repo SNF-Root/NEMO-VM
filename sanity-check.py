@@ -1,16 +1,20 @@
 import pandas as pd
-import numpy as np
 from datetime import datetime
 import requests
 import json
 from dotenv import load_dotenv
 import os
+import time
+
+#start a timer
+start_time = time.time()
 
 load_dotenv()
 token = os.getenv('NEMO_TOKEN')
 
-end_date = '04/28/2025'
-start_date = '04/01/2025'
+start_date = '06/01/2025'
+end_date = '06/26/2025'
+
 
 headers = {
     "Authorization": f"Token {token}"
@@ -19,6 +23,7 @@ headers = {
 def fetch_billing_data():
     # Base URL
     base_url = "https://nemo.stanford.edu/api/billing/billing_data/"
+    #base_url = "https://nemo.stanford.edu/api/reservations/"
     
     try:
         # Make the GET request
@@ -69,7 +74,7 @@ def process_json_data():
     df = df.dropna(how='all')
     # Remove any completely empty columns
     df = df.dropna(axis=1, how='all')
-    df.drop(['account_id','project_id','department','department_id','application','reference_po','rate_category','validated','waived','waived_by','waived_on'], axis=1, inplace=True)
+    df.drop(['account_id','project_id','department','department_id','application','reference_po','rate_category','validated','waived'], axis=1, inplace=True)
     df['hours']=round(df['amount']/60,2)
     # Format datetime columns
     date_columns = ['start', 'end']
@@ -102,6 +107,9 @@ def process_json_data():
     
     return df
 
-if __name__ == "__main__":
-    fetch_billing_data()
-    process_json_data()
+fetch_billing_data()
+process_json_data()
+
+#stop the timer
+end_time = time.time()
+print(f"Time taken: {end_time - start_time} seconds")
