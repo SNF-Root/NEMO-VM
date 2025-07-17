@@ -6,6 +6,9 @@ billing_data.json
 reservations_data.json
 *.pickle
 *.json
+*.xlsx
+~$*.xlsx
+Sanity-Env/
 !requirements.txt
 !package.json
 !tsconfig.json
