@@ -5,6 +5,9 @@
 echo "Setting up Nemo to Drive automation..."
 echo ""
 
+# Store the original directory where the script is run from
+ORIGINAL_DIR=$(pwd)
+
 # Check if .env file exists in current directory
 if [ ! -f .env ]; then
     echo "Error: .env file not found in current directory"
@@ -29,13 +32,52 @@ pip3 install pandas requests python-dotenv google-auth google-auth-oauthlib goog
 mkdir -p ~/nemo_automation
 cd ~/nemo_automation
 
-# Copy .env file from current directory
-cp ../.env .env
+# Create virtual environment
+python3 -m venv .venv
+echo "Created virtual environment"
+
+# Activate virtual environment and install packages
+source .venv/bin/activate
+if [ -f requirements.txt ]; then
+    pip install -r requirements.txt
+    echo "Installed Python packages from requirements.txt"
+else
+    echo "Warning: requirements.txt not found, installing default packages"
+    pip install pandas requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+fi
+
+# Copy .env file from original directory
+cp "$ORIGINAL_DIR/.env" .env
 echo "Copied .env file to ~/nemo_automation/"
 
+# Copy script files from original directory
+if [ -f "$ORIGINAL_DIR/nemo_to_drive.py" ]; then
+    cp "$ORIGINAL_DIR/nemo_to_drive.py" .
+    echo "Copied nemo_to_drive.py to ~/nemo_automation/"
+else
+    echo "Warning: nemo_to_drive.py not found in current directory"
+    echo "Please upload nemo_to_drive.py to ~/nemo_automation/ manually"
+fi
+
+if [ -f "$ORIGINAL_DIR/credentials.json" ]; then
+    cp "$ORIGINAL_DIR/credentials.json" .
+    echo "Copied credentials.json to ~/nemo_automation/"
+else
+    echo "Warning: credentials.json not found in current directory"
+    echo "Please upload credentials.json to ~/nemo_automation/ manually"
+fi
+
+if [ -f "$ORIGINAL_DIR/requirements.txt" ]; then
+    cp "$ORIGINAL_DIR/requirements.txt" .
+    echo "Copied requirements.txt to ~/nemo_automation/"
+else
+    echo "Warning: requirements.txt not found in current directory"
+    echo "Please upload requirements.txt to ~/nemo_automation/ manually"
+fi
+
 # Copy your script files here (you'll need to upload them)
-nemo_to_drive.py
-credentials.json
+# nemo_to_drive.py
+# credentials.json
 
 # Make the script executable
 chmod +x nemo_to_drive.py
