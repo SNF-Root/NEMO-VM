@@ -1,24 +1,46 @@
-# Nemo to Google Drive Billing Data Script
+# Nemo to Google Drive Billing Data Automation
 
-This script automatically fetches billing data from the Nemo API and uploads it to Google Drive with monthly folder organization.
+This project automatically fetches billing data from the Nemo API and uploads it to Google Drive with monthly folder organization. It includes automated VM setup scripts for easy deployment.
 
 ## Features
 
 - Fetches billing data from Nemo API
-- Saves data to CSV format
-- Uploads to Google Drive with monthly folder organization (YYYY_MM format)
-- Automatically cleans up local files after upload
-- Handles date ranges for current month data
+- Saves data to CSV format with monthly organization (YYYY_MM format)
+- Uploads to Google Drive with automatic folder creation
+- Automated VM setup with virtual environment isolation
+- Cron job scheduling for hands-off operation
+- Comprehensive error handling and logging
+- Automatic cleanup of local files after upload
 
-## Setup Instructions
+## Quick Start (VM Deployment)
 
-### 1. Install Dependencies
+### Prerequisites
+- Ubuntu/Debian VM with SSH access
+- Your Nemo API token
+- Google Drive API credentials
+- Google Drive parent folder ID
 
-```bash
-pip install -r requirements.txt
+### 1. Prepare Your Files Locally
+
+Ensure you have these files in your local directory:
+```
+Sanity-Check/
+├── setup_vm.sh
+├── nemo_to_drive.py
+├── credentials.json
+├── .env
+└── requirements.txt
 ```
 
-### 2. Set up Google Drive API
+### 2. Set Up Environment Variables
+
+Create a `.env` file with your credentials:
+```
+NEMO_TOKEN=your_nemo_api_token_here
+GDRIVE_PARENT_ID=your_google_drive_folder_id_here
+```
+
+### 3. Set Up Google Drive API
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
@@ -33,74 +55,146 @@ pip install -r requirements.txt
    - **IMPORTANT**: Under "Authorized redirect URIs", add: `http://localhost:8080/`
    - Click "Create"
    - Download the credentials file and rename it to `credentials.json`
-   - Place `credentials.json` in the same directory as the script
 
-### 3. Set up Environment Variables
-
-Create a `.env` file in the same directory with your Nemo API token:
-
-```
-NEMO_TOKEN=your_nemo_api_token_here
-```
-
-### 4. First Run
-
-On the first run, the script will:
-1. Open a browser window for Google Drive authentication
-2. Ask you to log in to your Google account
-3. Grant permissions to access Google Drive
-4. Save authentication tokens for future runs
-
-## Usage
-
-Run the script:
+### 4. Deploy to VM
 
 ```bash
+# Transfer files to VM
+scp setup_vm.sh nemo_to_drive.py credentials.json .env requirements.txt user@your-vm-ip:~/
+
+# SSH into VM
+ssh user@your-vm-ip
+
+# Make setup script executable and run it
+chmod +x setup_vm.sh
+./setup_vm.sh
+```
+
+### 5. Verify Setup
+
+```bash
+# Check automation status
+./check_status.sh
+
+# Test the script manually
+cd ~/nemo_automation
+source .venv/bin/activate
 python nemo_to_drive.py
 ```
 
-## How it Works
+## What the Setup Script Does
 
-1. **Date Range**: The script automatically determines the date range for the current month
-2. **Data Fetching**: Fetches billing data from Nemo API for the specified date range
-3. **CSV Creation**: Converts the data to CSV format with filename `billing_data_YYYY_MM.csv`
-4. **Folder Organization**: Creates or uses existing Google Drive folder named `YYYY_MM`
-5. **Upload**: Uploads the CSV file to the appropriate monthly folder
-6. **Cleanup**: Deletes the local CSV file after successful upload
+The `setup_vm.sh` script automatically:
 
-## File Structure
+1. **System Setup**: Updates packages and installs Python
+2. **Virtual Environment**: Creates isolated Python environment
+3. **Dependencies**: Installs packages from `requirements.txt`
+4. **File Management**: Copies all necessary files to `~/nemo_automation/`
+5. **Security**: Sets appropriate file permissions
+6. **Scheduling**: Creates cron job to run twice daily (8 AM and 8 PM)
+7. **Environment**: Configures wrapper script with proper environment variables
 
-- `nemo_to_drive.py` - Main script
-- `requirements.txt` - Python dependencies
-- `credentials.json` - Google Drive API credentials (you need to add this)
-- `.env` - Environment variables (you need to add this)
-- `token.pickle` - Google authentication tokens (created automatically)
+## File Structure After Setup
 
-## Scheduling
-
-To run this script multiple times per day, you can use:
-
-- **Cron (Linux/Mac)**: Add to crontab
-- **Task Scheduler (Windows)**: Create a scheduled task
-- **Cloud services**: Use services like AWS Lambda, Google Cloud Functions, etc.
-
-Example cron job to run twice daily:
-```bash
-0 9,17 * * * /path/to/python /path/to/nemo_to_drive.py
+```
+~/nemo_automation/
+├── nemo_to_drive.py          # Main automation script
+├── credentials.json          # Google Drive API credentials
+├── .env                      # Environment variables
+├── requirements.txt          # Python dependencies
+├── .venv/                    # Virtual environment
+├── run_nemo_script.sh        # Cron wrapper script
+└── nemo_log.txt              # Execution logs (created after first run)
 ```
 
-## Error Handling
+## Monitoring and Maintenance
 
-The script includes comprehensive error handling for:
-- Missing environment variables
-- API authentication failures
-- Network connectivity issues
-- Google Drive upload failures
-- File system operations
+### Check Status
+```bash
+./check_status.sh
+```
 
-## Notes
+### View Logs
+```bash
+tail -f ~/nemo_automation/nemo_log.txt
+```
 
-- The script creates monthly folders automatically
-- Authentication tokens are cached locally for convenience
-- Local CSV files are automatically cleaned up after upload
-- The script handles month transitions automatically 
+### Manual Execution
+```bash
+cd ~/nemo_automation
+source .venv/bin/activate
+python nemo_to_drive.py
+```
+
+### Update Cron Jobs
+```bash
+crontab -e
+```
+
+## Security Considerations
+
+- Credentials are stored in `~/nemo_automation/` with restricted permissions
+- Virtual environment isolates dependencies
+- Cron job runs as your user account
+- Files are readable only by the owner
+
+## Troubleshooting
+
+### Common Issues
+
+**ModuleNotFoundError**: Activate virtual environment first
+```bash
+cd ~/nemo_automation
+source .venv/bin/activate
+```
+
+**Permission Denied**: Check file permissions
+```bash
+chmod 600 ~/nemo_automation/.env
+chmod 600 ~/nemo_automation/credentials.json
+```
+
+**Cron Job Not Running**: Check cron service
+```bash
+sudo systemctl status cron
+```
+
+### Duplicate Cron Jobs
+If you ran setup multiple times:
+```bash
+crontab -e  # Remove duplicate entries
+```
+
+## Local Development
+
+For local development without VM deployment:
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run script
+python nemo_to_drive.py
+```
+
+## How It Works
+
+1. **Scheduling**: Cron job runs twice daily at 8 AM and 8 PM
+2. **Environment**: Virtual environment loads with all dependencies
+3. **Authentication**: Uses cached Google Drive tokens or prompts for new ones
+4. **Data Fetching**: Retrieves billing data from Nemo API for current month
+5. **Processing**: Converts data to CSV format
+6. **Upload**: Creates monthly folder and uploads CSV to Google Drive
+7. **Cleanup**: Removes local CSV file after successful upload
+8. **Logging**: Records execution details to log file
+
+## Support
+
+For issues or questions:
+1. Check the log file: `~/nemo_automation/nemo_log.txt`
+2. Run status check: `./check_status.sh`
+3. Test manually: `python nemo_to_drive.py` 

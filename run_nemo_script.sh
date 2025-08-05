@@ -1,9 +1,13 @@
 #!/bin/bash
 cd ~/nemo_automation
 
+echo "[run_nemo_script.sh] Script started at $(date)"
+
 # Load environment variables from .env file
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a  # automatically export all variables
+    source .env
+    set +a  # turn off automatic export
 fi
 
 # Activate virtual environment
