@@ -75,6 +75,15 @@ else
     echo "Please upload requirements.txt to ~/nemo_automation/ manually"
 fi
 
+if [ -f "$ORIGINAL_DIR/check_status.sh" ]; then
+    cp "$ORIGINAL_DIR/check_status.sh" .
+    chmod +x check_status.sh
+    echo "Copied check_status.sh to ~/nemo_automation/"
+else
+    echo "Warning: check_status.sh not found in current directory"
+    echo "Please upload check_status.sh to ~/nemo_automation/ manually"
+fi
+
 # Copy your script files here (you'll need to upload them)
 # nemo_to_drive.py
 # credentials.json

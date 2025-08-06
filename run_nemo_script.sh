@@ -11,7 +11,22 @@ if [ -f .env ]; then
 fi
 
 # Activate virtual environment
-source .venv/bin/activate
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+    echo "[run_nemo_script.sh] Virtual environment activated"
+else
+    echo "[run_nemo_script.sh] ERROR: Virtual environment not found at .venv/bin/activate"
+    exit 1
+fi
+
+# Verify virtual environment is active
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "[run_nemo_script.sh] ERROR: Virtual environment not activated"
+    exit 1
+fi
+
+echo "[run_nemo_script.sh] Using Python: $(which python)"
+echo "[run_nemo_script.sh] Virtual environment: $VIRTUAL_ENV"
 
 # Debug: Check if token file exists
 if [ -f token.pickle ]; then
@@ -21,7 +36,7 @@ else
 fi
 
 # Run the script and capture exit code
-python nemo_to_drive.py >> nemo_log.txt 2>&1
+python nemo_to_drive.py
 EXIT_CODE=$?
 
 echo "[run_nemo_script.sh] Python script exited with code: $EXIT_CODE"

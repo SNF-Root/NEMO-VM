@@ -42,6 +42,8 @@ NEMO_TOKEN=your_nemo_api_token_here
 GDRIVE_PARENT_ID=your_shared_drive_id_here
 ```
 
+**Important**: The `.env` file format must be exact - no spaces around the `=` sign. Use `KEY=value`, not `KEY = value`.
+
 ### 3. Set Up Google Service Account
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
