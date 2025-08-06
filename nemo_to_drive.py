@@ -11,6 +11,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
 import pickle
 from dateutil.relativedelta import relativedelta
 import urllib.parse
@@ -29,49 +30,32 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 BASE_URL = "https://nemo.stanford.edu/api/billing/billing_data/"
 
 def authenticate_google_drive():
-    """Authenticate with Google Drive API"""
-    creds = None
-    
-    # Load existing credentials if available
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    
-    # If no valid credentials available, let user log in
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            try:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                # Use a fixed port for consistency
-                creds = flow.run_local_server(port=8080)
-            except Exception as e:
-                print(f"OAuth authentication failed: {e}")
-                print("\nTo fix this issue:")
-                print("1. Go to Google Cloud Console (https://console.cloud.google.com/)")
-                print("2. Select your project")
-                print("3. Go to 'APIs & Services' > 'Credentials'")
-                print("4. Find your OAuth 2.0 Client ID and click on it")
-                print("5. Under 'Authorized redirect URIs', add: http://localhost:8080/")
-                print("6. Save the changes")
-                print("7. Download the updated credentials.json file")
-                print("8. Replace your current credentials.json with the new one")
-                raise
+    """Authenticate with Google Drive API using service account"""
+    try:
+        # Use service account credentials
+        SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        SERVICE_ACCOUNT_FILE = 'credentials.json'
         
-        # Save credentials for next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-    
-    return build('drive', 'v3', credentials=creds)
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        
+        print("Successfully authenticated with service account")
+        return build('drive', 'v3', credentials=credentials)
+        
+    except Exception as e:
+        print(f"Service account authentication failed: {e}")
+        print("\nTo fix this issue:")
+        print("1. Make sure credentials.json contains your service account key")
+        print("2. Ensure the service account has Editor role on the target Google Drive")
+        print("3. Verify the service account email has access to the target folder")
+        raise
 
 def upload_to_drive(service, file_path, folder_id, filename):
     """Upload file to Google Drive in the specified folder, overwriting if exists"""
     
     # Check if file already exists
     query = f"name='{filename}' and '{folder_id}' in parents"
-    results = service.files().list(q=query).execute()
+    results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     files = results.get('files', [])
     
     if files:
@@ -81,7 +65,8 @@ def upload_to_drive(service, file_path, folder_id, filename):
         
         file = service.files().update(
             fileId=file_id,
-            media_body=media
+            media_body=media,
+            supportsAllDrives=True
         ).execute()
         
         print(f"File updated in Google Drive with ID: {file.get('id')}")
@@ -98,7 +83,8 @@ def upload_to_drive(service, file_path, folder_id, filename):
         file = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id'
+            fields='id',
+            supportsAllDrives=True
         ).execute()
         
         print(f"File uploaded to Google Drive with ID: {file.get('id')}")
@@ -206,11 +192,11 @@ def process_month(service, token, year, month, parent_folder_id):
 def batch_upload_all_months():
     load_dotenv()
     token = os.getenv('NEMO_TOKEN')
-    parent_folder_id = os.getenv('GDRIVE_PARENT_ID')
+    shared_drive_id = os.getenv('GDRIVE_PARENT_ID')
     if not token:
         print("Error: NEMO_TOKEN not found in environment variables")
         return
-    if not parent_folder_id:
+    if not shared_drive_id:
         print("Error: GDRIVE_PARENT_ID not found in environment variables")
         return
     try:
@@ -223,7 +209,9 @@ def batch_upload_all_months():
     year = 2024
     month = 1
     while (year < current.year) or (year == current.year and month <= current.month):
-        process_month(service, token, year, month, parent_folder_id)
+        # Get or create the target folder path for this month
+        target_folder_id = get_target_folder_path(service, shared_drive_id, year, month)
+        process_month(service, token, year, month, target_folder_id)
         # Move to next month
         if month == 12:
             year += 1
@@ -232,6 +220,48 @@ def batch_upload_all_months():
             month += 1
     print("\nBatch upload complete!")
 
+def get_or_create_folder(service, parent_id, folder_name):
+    """Get or create a folder with the given name in the parent folder"""
+    print(f"Looking for folder '{folder_name}' in parent ID: {parent_id}")
+    
+    # Check if folder already exists
+    query = f"name='{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder'"
+    results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    files = results.get('files', [])
+    
+    if files:
+        # Folder exists, return its ID
+        print(f"Found existing folder '{folder_name}' with ID: {files[0]['id']}")
+        return files[0]['id']
+    else:
+        # Create new folder
+        print(f"Creating new folder '{folder_name}' in parent ID: {parent_id}")
+        folder_metadata = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [parent_id]
+        }
+        
+        folder = service.files().create(
+            body=folder_metadata,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        
+        print(f"Created folder: {folder_name} with ID: {folder.get('id')}")
+        return folder.get('id')
+
+def get_target_folder_path(service, shared_drive_id, year, month):
+    """Get or create the folder path: Year/Billing_Data"""
+    # Create or get year folder
+    year_folder_name = str(year)
+    year_folder_id = get_or_create_folder(service, shared_drive_id, year_folder_name)
+    
+    # Create or get billing_data folder inside year folder
+    billing_folder_name = "Billing_Data"
+    billing_folder_id = get_or_create_folder(service, year_folder_id, billing_folder_name)
+    
+    return billing_folder_id
 
 
 def main():
@@ -241,14 +271,16 @@ def main():
     # Load environment variables
     load_dotenv()
     token = os.getenv('NEMO_TOKEN')
-    parent_folder_id = os.getenv('GDRIVE_PARENT_ID')
+    shared_drive_id = os.getenv('GDRIVE_PARENT_ID')
     
     if not token:
         print("Error: NEMO_TOKEN not found in environment variables")
         return
-    if not parent_folder_id:
+    if not shared_drive_id:
         print("Error: GDRIVE_PARENT_ID not found in environment variables")
         return
+    
+    print(f"Using shared drive ID: {shared_drive_id}")
     
     # Get date range for current month
     start_date, end_date = get_date_range()
@@ -283,11 +315,13 @@ def main():
         print("Make sure you have credentials.json file in the same directory")
         return
     
-
-
+    # Get or create the target folder path: Year/Billing_Data
+    target_folder_id = get_target_folder_path(service, shared_drive_id, start_date.year, start_date.month)
+    print(f"Target folder ID: {target_folder_id}")
+    
     # Upload to Google Drive
     try:
-        upload_to_drive(service, filename, parent_folder_id, filename)
+        upload_to_drive(service, filename, target_folder_id, filename)
         
         # Clean up local file
         cleanup_local_file(filename)
@@ -303,5 +337,5 @@ def main():
 
 if __name__ == "__main__":
     # Uncomment the next line to run the batch upload for all months
-    #batch_upload_all_months()
-    main()
+    batch_upload_all_months()
+    #main()
