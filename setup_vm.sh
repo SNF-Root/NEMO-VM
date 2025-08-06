@@ -98,11 +98,11 @@ EOF
 chmod +x run_nemo_script.sh
 
 # Set up cron job to run twice a day (8 AM and 8 PM)
-(crontab -l 2>/dev/null; echo "0 8,20 * * * ~/nemo_automation/run_nemo_script.sh") | crontab -
+(crontab -l 2>/dev/null; echo "0 * * * * ~/nemo_automation/run_nemo_script.sh") | crontab -
 
 echo ""
 echo "=== Setup Complete! ==="
-echo "Cron job scheduled to run at 8 AM and 8 PM daily"
+echo "Cron job scheduled to run hourly"
 echo "Logs will be saved to ~/nemo_automation/nemo_log.txt"
 echo ""
 echo "Environment variables loaded from existing .env file"

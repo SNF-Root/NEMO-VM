@@ -337,5 +337,5 @@ def main():
 
 if __name__ == "__main__":
     # Uncomment the next line to run the batch upload for all months
-    batch_upload_all_months()
-    #main()
+    #batch_upload_all_months()
+    main()

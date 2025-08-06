@@ -1,24 +1,26 @@
 # Nemo to Google Drive Billing Data Automation
 
-This project automatically fetches billing data from the Nemo API and uploads it to Google Drive with monthly folder organization. It includes automated VM setup scripts for easy deployment.
+This project automatically fetches billing data from the Nemo API and uploads it to Google Drive with organized folder structure. It includes automated VM setup scripts for easy deployment using Google Service Account authentication.
 
 ## Features
 
 - Fetches billing data from Nemo API
 - Saves data to CSV format with monthly organization (YYYY_MM format)
 - Uploads to Google Drive with automatic folder creation
+- Uses Google Service Account for reliable headless authentication
 - Automated VM setup with virtual environment isolation
 - Cron job scheduling for hands-off operation
 - Comprehensive error handling and logging
 - Automatic cleanup of local files after upload
+- Organized folder structure: Year/Billing_Data/
 
 ## Quick Start (VM Deployment)
 
 ### Prerequisites
 - Ubuntu/Debian VM with SSH access
 - Your Nemo API token
-- Google Drive API credentials
-- Google Drive parent folder ID
+- Google Service Account credentials
+- Google Shared Drive ID
 
 ### 1. Prepare Your Files Locally
 
@@ -37,10 +39,10 @@ Sanity-Check/
 Create a `.env` file with your credentials:
 ```
 NEMO_TOKEN=your_nemo_api_token_here
-GDRIVE_PARENT_ID=your_google_drive_folder_id_here
+GDRIVE_PARENT_ID=your_shared_drive_id_here
 ```
 
-### 3. Set Up Google Drive API
+### 3. Set Up Google Service Account
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
@@ -48,15 +50,24 @@ GDRIVE_PARENT_ID=your_google_drive_folder_id_here
    - Go to "APIs & Services" > "Library"
    - Search for "Google Drive API"
    - Click on it and press "Enable"
-4. Create credentials:
-   - Go to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" → "OAuth 2.0 Client IDs"
-   - Choose "Desktop application"
-   - **IMPORTANT**: Under "Authorized redirect URIs", add: `http://localhost:8080/`
-   - Click "Create"
-   - Download the credentials file and rename it to `credentials.json`
+4. Create a Service Account:
+   - Go to "IAM & Admin" > "Service Accounts"
+   - Click "Create Service Account"
+   - Give it a name like "nemo-automation"
+   - Grant it "Editor" role for Google Drive
+   - Create and download a JSON key file
+   - Rename the downloaded file to `credentials.json`
 
-### 4. Deploy to VM
+### 4. Set Up Shared Drive
+
+1. Go to [Google Drive](https://drive.google.com)
+2. Click "Shared drives" in the left sidebar
+3. Click "New" → "Shared drive"
+4. Name it something like "Nemo Automation Data"
+5. Add your service account email as a member with "Editor" role
+6. Get the Shared Drive ID from the URL (after `/folders/`)
+
+### 5. Deploy to VM
 
 ```bash
 # Transfer files to VM
@@ -70,7 +81,7 @@ chmod +x setup_vm.sh
 ./setup_vm.sh
 ```
 
-### 5. Verify Setup
+### 6. Verify Setup
 
 ```bash
 # Check automation status
@@ -91,7 +102,7 @@ The `setup_vm.sh` script automatically:
 3. **Dependencies**: Installs packages from `requirements.txt`
 4. **File Management**: Copies all necessary files to `~/nemo_automation/`
 5. **Security**: Sets appropriate file permissions
-6. **Scheduling**: Creates cron job to run twice daily (8 AM and 8 PM)
+6. **Scheduling**: Creates cron job to run hourly
 7. **Environment**: Configures wrapper script with proper environment variables
 
 ## File Structure After Setup
@@ -99,12 +110,31 @@ The `setup_vm.sh` script automatically:
 ```
 ~/nemo_automation/
 ├── nemo_to_drive.py          # Main automation script
-├── credentials.json          # Google Drive API credentials
+├── credentials.json          # Google Service Account credentials
 ├── .env                      # Environment variables
 ├── requirements.txt          # Python dependencies
 ├── .venv/                    # Virtual environment
 ├── run_nemo_script.sh        # Cron wrapper script
 └── nemo_log.txt              # Execution logs (created after first run)
+```
+
+## Google Drive Folder Structure
+
+The script creates an organized folder hierarchy:
+
+```
+Shared Drive/
+├── 2024/
+│   └── Billing_Data/
+│       ├── billing_data_2024_01.csv
+│       ├── billing_data_2024_02.csv
+│       └── ...
+├── 2025/
+│   └── Billing_Data/
+│       ├── billing_data_2025_01.csv
+│       ├── billing_data_2025_02.csv
+│       └── ...
+└── ...
 ```
 
 ## Monitoring and Maintenance
@@ -133,14 +163,27 @@ crontab -e
 
 ## Security Considerations
 
-- Credentials are stored in `~/nemo_automation/` with restricted permissions
+- Service account credentials are stored securely with restricted permissions
 - Virtual environment isolates dependencies
 - Cron job runs as your user account
 - Files are readable only by the owner
+- Uses shared drives for better security and no storage quotas
 
 ## Troubleshooting
 
 ### Common Issues
+
+**Service Account Authentication Failed**: Check credentials and permissions
+```bash
+# Verify service account has access to shared drive
+# Check credentials.json contains service account key
+```
+
+**Shared Drive Access Denied**: Add service account to shared drive
+```bash
+# Go to shared drive → Manage members → Add service account email
+# Grant "Editor" role
+```
 
 **ModuleNotFoundError**: Activate virtual environment first
 ```bash
@@ -183,14 +226,15 @@ python nemo_to_drive.py
 
 ## How It Works
 
-1. **Scheduling**: Cron job runs twice daily at 8 AM and 8 PM
+1. **Scheduling**: Cron job runs hourly
 2. **Environment**: Virtual environment loads with all dependencies
-3. **Authentication**: Uses cached Google Drive tokens or prompts for new ones
+3. **Authentication**: Uses Google Service Account for reliable authentication
 4. **Data Fetching**: Retrieves billing data from Nemo API for current month
 5. **Processing**: Converts data to CSV format
-6. **Upload**: Creates monthly folder and uploads CSV to Google Drive
-7. **Cleanup**: Removes local CSV file after successful upload
-8. **Logging**: Records execution details to log file
+6. **Folder Creation**: Creates Year/Billing_Data folder structure as needed
+7. **Upload**: Uploads CSV to appropriate folder in shared drive
+8. **Cleanup**: Removes local CSV file after successful upload
+9. **Logging**: Records execution details to log file
 
 ## Support
 
