@@ -12,8 +12,8 @@ start_time = time.time()
 load_dotenv()
 token = os.getenv('NEMO_TOKEN')
 
-start_date = '07/01/2025'
-end_date = '07/25/2025'
+start_date = '09/01/2025'
+end_date = '09/29/2025'
 
 
 headers = {
@@ -126,7 +126,7 @@ def process_json_data():
     
     return df
 
-#fetch_billing_data()
+fetch_billing_data()
 process_json_data()
 
 
