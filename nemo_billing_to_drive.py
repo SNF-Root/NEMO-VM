@@ -527,7 +527,7 @@ if __name__ == "__main__":
     #batch_upload_all_months()
     
     # Uncomment the next line to create master CSV files for all years
-    create_master_csvs_for_years()
+    #create_master_csvs_for_years()
     
     # Uncomment the next line to update master CSV files for all years
     #update_master_csvs_for_years()
