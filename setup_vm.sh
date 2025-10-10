@@ -51,12 +51,12 @@ cp "$ORIGINAL_DIR/.env" .env
 echo "Copied .env file to ~/nemo_automation/"
 
 # Copy script files from original directory
-if [ -f "$ORIGINAL_DIR/nemo_to_drive.py" ]; then
-    cp "$ORIGINAL_DIR/nemo_to_drive.py" .
-    echo "Copied nemo_to_drive.py to ~/nemo_automation/"
+if [ -f "$ORIGINAL_DIR/nemo_billing_to_drive.py" ]; then
+    cp "$ORIGINAL_DIR/nemo_billing_to_drive.py" .
+    echo "Copied nemo_billing_to_drive.py to ~/nemo_automation/"
 else
-    echo "Warning: nemo_to_drive.py not found in current directory"
-    echo "Please upload nemo_to_drive.py to ~/nemo_automation/ manually"
+    echo "Warning: nemo_billing_to_drive.py not found in current directory"
+    echo "Please upload nemo_billing_to_drive.py to ~/nemo_automation/ manually"
 fi
 
 if [ -f "$ORIGINAL_DIR/credentials.json" ]; then
@@ -85,11 +85,11 @@ else
 fi
 
 # Copy your script files here (you'll need to upload them)
-# nemo_to_drive.py
+# nemo_billing_to_drive.py
 # credentials.json
 
 # Make the script executable
-chmod +x nemo_to_drive.py
+chmod +x nemo_billing_to_drive.py
 
 # Create a wrapper script for cron that loads environment variables
 cat > run_nemo_script.sh << 'EOF'
@@ -101,7 +101,7 @@ if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
 fi
 
-python3 nemo_to_drive.py >> nemo_log.txt 2>&1
+python3 nemo_billing_to_drive.py >> nemo_log.txt 2>&1
 EOF
 
 chmod +x run_nemo_script.sh
@@ -117,8 +117,8 @@ echo ""
 echo "Environment variables loaded from existing .env file"
 echo ""
 echo "Next steps:"
-echo "1. Upload your nemo_to_drive.py file to ~/nemo_automation/"
+echo "1. Upload your nemo_billing_to_drive.py file to ~/nemo_automation/"
 echo "2. Upload your credentials.json file to ~/nemo_automation/"
-echo "3. Test the script manually: python3 nemo_to_drive.py"
+echo "3. Test the script manually: python3 nemo_billing_to_drive.py"
 echo ""
 echo "To verify setup, run: ./check_status.sh" 

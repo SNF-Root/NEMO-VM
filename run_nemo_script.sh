@@ -36,7 +36,7 @@ else
 fi
 
 # Run the script and capture exit code
-python nemo_to_drive.py
+python nemo_billing_to_drive.py
 EXIT_CODE=$?
 
 echo "[run_nemo_script.sh] Python script exited with code: $EXIT_CODE"

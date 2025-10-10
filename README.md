@@ -28,7 +28,7 @@ Ensure you have these files in your local directory:
 ```
 Sanity-Check/
 ├── setup_vm.sh
-├── nemo_to_drive.py
+├── nemo_billing_to_drive.py
 ├── credentials.json
 ├── .env
 └── requirements.txt
@@ -73,7 +73,7 @@ GDRIVE_PARENT_ID=your_shared_drive_id_here
 
 ```bash
 # Transfer files to VM
-scp setup_vm.sh nemo_to_drive.py credentials.json .env requirements.txt user@your-vm-ip:~/
+scp setup_vm.sh nemo_billing_to_drive.py credentials.json .env requirements.txt user@your-vm-ip:~/
 
 # SSH into VM
 ssh user@your-vm-ip
@@ -92,7 +92,7 @@ chmod +x setup_vm.sh
 # Test the script manually
 cd ~/nemo_automation
 source .venv/bin/activate
-python nemo_to_drive.py
+python nemo_billing_to_drive.py
 ```
 
 ## What the Setup Script Does
@@ -111,7 +111,7 @@ The `setup_vm.sh` script automatically:
 
 ```
 ~/nemo_automation/
-├── nemo_to_drive.py          # Main automation script
+├── nemo_billing_to_drive.py          # Main automation script
 ├── credentials.json          # Google Service Account credentials
 ├── .env                      # Environment variables
 ├── requirements.txt          # Python dependencies
@@ -155,7 +155,7 @@ tail -f ~/nemo_automation/nemo_log.txt
 ```bash
 cd ~/nemo_automation
 source .venv/bin/activate
-python nemo_to_drive.py
+python nemo_billing_to_drive.py
 ```
 
 ### Update Cron Jobs
@@ -223,7 +223,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run script
-python nemo_to_drive.py
+python nemo_billing_to_drive.py
 ```
 
 ## How It Works
@@ -243,4 +243,4 @@ python nemo_to_drive.py
 For issues or questions:
 1. Check the log file: `~/nemo_automation/nemo_log.txt`
 2. Run status check: `./check_status.sh`
-3. Test manually: `python nemo_to_drive.py` 
+3. Test manually: `python nemo_billing_to_drive.py` 
