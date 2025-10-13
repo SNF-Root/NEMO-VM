@@ -207,6 +207,8 @@ def update_master_csv_for_year(service, token, year, shared_drive_id):
         print(f"No new data found for {year}")
         return
     
+    print(f"DEBUG: Fetched {len(latest_data)} records for master CSV update")
+    
     # Create master CSV filename
     descriptor = get_base_url_descriptor(BASE_URL)
     master_filename = f"{descriptor}_{year}_master.csv"
@@ -522,6 +524,56 @@ def create_master_csvs_for_years():
     
     print("\nMaster CSV creation complete!")
 
+def test_master_csv_update():
+    """Test function to debug master CSV update functionality"""
+    print("=== Testing Master CSV Update ===")
+    
+    load_dotenv()
+    token = os.getenv('NEMO_TOKEN')
+    shared_drive_id = os.getenv('GDRIVE_PARENT_ID')
+    
+    if not token:
+        print("Error: NEMO_TOKEN not found in environment variables")
+        return
+    if not shared_drive_id:
+        print("Error: GDRIVE_PARENT_ID not found in environment variables")
+        return
+    
+    try:
+        service = authenticate_google_drive()
+    except Exception as e:
+        print(f"Failed to authenticate with Google Drive: {e}")
+        return
+    
+    current_year = datetime.now().year
+    print(f"Testing master CSV update for year: {current_year}")
+    
+    # Test the update function
+    update_master_csv_for_year(service, token, current_year, shared_drive_id)
+    
+    print("=== Test Complete ===")
+    
+    # Additional test: Check if master CSV exists in Google Drive
+    print("\n=== Checking Master CSV in Google Drive ===")
+    year_folder_id = get_or_create_folder(service, shared_drive_id, str(current_year))
+    master_folder_id = get_or_create_folder(service, year_folder_id, "Master_CSV")
+    
+    descriptor = get_base_url_descriptor(BASE_URL)
+    master_filename = f"{descriptor}_{current_year}_master.csv"
+    
+    query = f"name='{master_filename}' and '{master_folder_id}' in parents"
+    results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    existing_files = results.get('files', [])
+    
+    if existing_files:
+        file_info = existing_files[0]
+        print(f"Found master CSV: {file_info['name']}")
+        print(f"File ID: {file_info['id']}")
+        print(f"Created: {file_info['createdTime']}")
+        print(f"Modified: {file_info['modifiedTime']}")
+    else:
+        print("No master CSV found in Google Drive")
+
 if __name__ == "__main__":
     # Uncomment the next line to run the batch upload for all months
     #batch_upload_all_months()
@@ -531,5 +583,8 @@ if __name__ == "__main__":
     
     # Uncomment the next line to update master CSV files for all years
     #update_master_csvs_for_years()
+    
+    # Uncomment the next line to test master CSV update functionality
+    #test_master_csv_update()
     
     main()

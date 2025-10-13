@@ -74,45 +74,71 @@ def authenticate_google_drive():
         print("3. Verify the service account email has access to the target folder")
         raise
 
-def upload_to_drive(service, file_path, folder_id, filename):
-    """Upload file to Google Drive in the specified folder, overwriting if exists"""
+def upload_to_drive(service, file_path, folder_id, filename, cleanup=True):
+    """Upload file to Google Drive in the specified folder, overwriting if exists
     
-    # Check if file already exists
-    query = f"name='{filename}' and '{folder_id}' in parents"
-    results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    files = results.get('files', [])
+    Args:
+        service: Google Drive API service
+        file_path: Path to local file to upload
+        folder_id: Google Drive folder ID
+        filename: Name for the file in Google Drive
+        cleanup: If True, delete local file after successful upload (default: True)
     
-    if files:
-        # File exists, update it
-        file_id = files[0]['id']
-        media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+    Returns:
+        File ID of the uploaded file, or None if upload failed
+    """
+    
+    try:
+        # Check if file already exists
+        query = f"name='{filename}' and '{folder_id}' in parents"
+        results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+        files = results.get('files', [])
         
-        file = service.files().update(
-            fileId=file_id,
-            media_body=media,
-            supportsAllDrives=True
-        ).execute()
+        if files:
+            # File exists, update it
+            file_id = files[0]['id']
+            media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+            
+            file = service.files().update(
+                fileId=file_id,
+                media_body=media,
+                supportsAllDrives=True
+            ).execute()
+            
+            print(f"File updated in Google Drive with ID: {file.get('id')}")
+            file_id = file.get('id')
+        else:
+            # File doesn't exist, create new one
+            file_metadata = {
+                'name': filename,
+                'parents': [folder_id]
+            }
+            
+            media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+            
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            
+            print(f"File uploaded to Google Drive with ID: {file.get('id')}")
+            file_id = file.get('id')
         
-        print(f"File updated in Google Drive with ID: {file.get('id')}")
-        return file.get('id')
-    else:
-        # File doesn't exist, create new one
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
-        }
+        # Clean up local file after successful upload
+        if cleanup and file_id:
+            try:
+                os.remove(file_path)
+                print(f"✓ Cleaned up local file: {file_path}")
+            except Exception as e:
+                print(f"Warning: Could not delete local file {file_path}: {e}")
         
-        media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+        return file_id
         
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        
-        print(f"File uploaded to Google Drive with ID: {file.get('id')}")
-        return file.get('id')
+    except Exception as e:
+        print(f"ERROR: Failed to upload {file_path}: {e}")
+        return None
 
 def fetch_usage_events_data(start_date, end_date, token, target_year=None, target_month=None):
     """Fetch usage events data from Nemo API and filter by date if specified"""
@@ -254,6 +280,14 @@ def batch_upload_all_months():
     
     print(f"Using shared drive ID: {shared_drive_id}")
     
+    # Update tool and user lists from API before processing
+    print("\n" + "=" * 60)
+    print("📋 Updating reference data from Nemo API...")
+    print("=" * 60)
+    utils.update_tool_list_from_api(token)
+    utils.update_user_list_from_api(token)
+    print("=" * 60 + "\n")
+    
     try:
         service = authenticate_google_drive()
     except Exception as e:
@@ -320,6 +354,14 @@ def main():
         return
     
     print(f"Using shared drive ID: {shared_drive_id}")
+    
+    # Update tool and user lists from API before processing
+    print("\n" + "=" * 60)
+    print("📋 Updating reference data from Nemo API...")
+    print("=" * 60)
+    utils.update_tool_list_from_api(token)
+    utils.update_user_list_from_api(token)
+    print("=" * 60 + "\n")
     
     # Get date range for current month
     start_date, end_date = get_date_range()
@@ -390,7 +432,13 @@ def main():
     print(f"Total execution time: {execution_time:.2f} seconds")
 
 if __name__ == "__main__":
-    # Run the batch upload for all months
-    batch_upload_all_months()
-    # Uncomment the next line to run just the current month instead
-    #main()
+    import sys
+    
+    # Check if batch mode is requested via command line argument
+    if len(sys.argv) > 1 and sys.argv[1] == "--batch":
+        print("Running in BATCH mode - processing all historical months...")
+        batch_upload_all_months()
+    else:
+        print("Running in NORMAL mode - processing current month only...")
+        print("(Use '--batch' argument to process all historical months)")
+        main()

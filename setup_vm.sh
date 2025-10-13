@@ -20,10 +20,24 @@ echo ""
 
 # Update system
 echo "=== System Setup ==="
-sudo apt-get update
-
-# Install Python and pip if not already installed
-sudo apt-get install -y python3 python3-pip
+# Check if we're on macOS or Linux
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "Detected macOS - using Homebrew"
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        echo "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    # Install Python if not already installed
+    if ! command -v python3 &> /dev/null; then
+        brew install python3
+    fi
+else
+    echo "Detected Linux - using apt-get"
+    sudo apt-get update
+    # Install Python and pip if not already installed
+    sudo apt-get install -y python3 python3-pip
+fi
 
 # Install required Python packages
 pip3 install pandas requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client

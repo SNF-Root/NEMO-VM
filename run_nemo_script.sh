@@ -1,13 +1,27 @@
 #!/bin/bash
-cd ~/nemo_automation
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 echo "[run_nemo_script.sh] Script started at $(date)"
+echo "[run_nemo_script.sh] Working directory: $(pwd)"
 
 # Load environment variables from .env file
 if [ -f .env ]; then
-    set -a  # automatically export all variables
+    echo "[run_nemo_script.sh] Loading environment variables from .env file"
+    # Source the .env file using set -a to auto-export variables
+    set -a
     source .env
-    set +a  # turn off automatic export
+    set +a
+else
+    echo "[run_nemo_script.sh] WARNING: .env file not found"
+    echo "[run_nemo_script.sh] Please create a .env file with NEMO_TOKEN and GDRIVE_PARENT_ID"
+fi
+
+# Deactivate any existing conda environment first
+if [ -n "$CONDA_DEFAULT_ENV" ]; then
+    echo "[run_nemo_script.sh] Deactivating conda environment: $CONDA_DEFAULT_ENV"
+    conda deactivate 2>/dev/null || true
 fi
 
 # Activate virtual environment
@@ -27,6 +41,7 @@ fi
 
 echo "[run_nemo_script.sh] Using Python: $(which python)"
 echo "[run_nemo_script.sh] Virtual environment: $VIRTUAL_ENV"
+echo "[run_nemo_script.sh] Python version: $(python --version)"
 
 # Debug: Check if token file exists
 if [ -f token.pickle ]; then
@@ -35,16 +50,42 @@ else
     echo "[run_nemo_script.sh] No token file found - will need authentication"
 fi
 
-# Run the script and capture exit code
+# Run the billing script and capture exit code
+echo "[run_nemo_script.sh] Starting billing data script..."
 python nemo_billing_to_drive.py
-EXIT_CODE=$?
+BILLING_EXIT_CODE=$?
 
-echo "[run_nemo_script.sh] Python script exited with code: $EXIT_CODE"
-echo "[run_nemo_script.sh] completed at $(date)"
+echo "[run_nemo_script.sh] Billing script exited with code: $BILLING_EXIT_CODE"
 
-# If the script failed, log the last few lines of output
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "[run_nemo_script.sh] ERROR: Script failed. Last 10 lines of log:"
+# If the billing script failed, log the error
+if [ $BILLING_EXIT_CODE -ne 0 ]; then
+    echo "[run_nemo_script.sh] ERROR: Billing script failed. Last 10 lines of log:"
     tail -10 nemo_log.txt
-fi 
+fi
+
+# Run the usage events script
+echo "[run_nemo_script.sh] Starting usage events script..."
+python usage_questions.py
+USAGE_EXIT_CODE=$?
+
+echo "[run_nemo_script.sh] Usage events script exited with code: $USAGE_EXIT_CODE"
+
+# If the usage events script failed, log the error
+if [ $USAGE_EXIT_CODE -ne 0 ]; then
+    echo "[run_nemo_script.sh] ERROR: Usage events script failed."
+fi
+
+# Final summary
+echo "[run_nemo_script.sh] completed at $(date)"
+echo "[run_nemo_script.sh] Summary:"
+echo "  - Billing script exit code: $BILLING_EXIT_CODE"
+echo "  - Usage events script exit code: $USAGE_EXIT_CODE"
+
+# Exit with error if either script failed
+if [ $BILLING_EXIT_CODE -ne 0 ] || [ $USAGE_EXIT_CODE -ne 0 ]; then
+    echo "[run_nemo_script.sh] ERROR: One or more scripts failed"
+    exit 1
+fi
+
+echo "[run_nemo_script.sh] All scripts completed successfully!"
 

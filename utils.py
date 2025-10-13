@@ -2,11 +2,127 @@ import pandas as pd
 import json
 from datetime import datetime
 import urllib.parse
+import requests
+import os
+
+def update_tool_list_from_api(token):
+    """Fetch the latest tool list from Nemo API and update tool_list.csv in current directory"""
+    tools_api_url = "https://nemo.stanford.edu/api/tools/"
+    
+    headers = {
+        "Authorization": f"Token {token}"
+    }
+    
+    # Use current working directory
+    tool_list_path = os.path.join(os.getcwd(), 'tool_list.csv')
+    
+    try:
+        print("Fetching latest tool list from Nemo API...")
+        response = requests.get(tools_api_url, headers=headers)
+        response.raise_for_status()
+        
+        tools_data = response.json()
+        print(f"Retrieved {len(tools_data)} tools from API")
+        
+        # Extract id and name fields
+        tool_records = []
+        for tool in tools_data:
+            tool_id = tool.get('id')
+            tool_name = tool.get('name')
+            if tool_id and tool_name:
+                tool_records.append({
+                    'id': tool_id,
+                    'name': tool_name
+                })
+        
+        # Sort by id for consistency
+        tool_records.sort(key=lambda x: x['id'])
+        
+        # Save to CSV in current directory
+        df = pd.DataFrame(tool_records)
+        df.to_csv(tool_list_path, index=False)
+        
+        print(f"✓ Successfully updated {tool_list_path} with {len(tool_records)} tools")
+        
+        # Show sample of tools
+        if tool_records:
+            sample_tools = ', '.join([f"{t['name']} (ID:{t['id']})" for t in tool_records[:3]])
+            print(f"  Sample tools: {sample_tools}")
+        
+        return True
+        
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to fetch tool list from API: {e}")
+        print(f"Continuing with existing tool_list.csv in {os.getcwd()}...")
+        return False
+    except Exception as e:
+        print(f"ERROR: Failed to update tool_list.csv: {e}")
+        print(f"Continuing with existing tool_list.csv in {os.getcwd()}...")
+        return False
+
+def update_user_list_from_api(token):
+    """Fetch the latest user list from Nemo API and update user_list.csv in current directory"""
+    users_api_url = "https://nemo.stanford.edu/api/users/"
+    
+    headers = {
+        "Authorization": f"Token {token}"
+    }
+    
+    # Use current working directory
+    user_list_path = os.path.join(os.getcwd(), 'user_list.csv')
+    
+    try:
+        print("Fetching latest user list from Nemo API...")
+        response = requests.get(users_api_url, headers=headers)
+        response.raise_for_status()
+        
+        users_data = response.json()
+        print(f"Retrieved {len(users_data)} users from API")
+        
+        # Extract relevant fields
+        user_records = []
+        for user in users_data:
+            user_id = user.get('id')
+            username = user.get('username')
+            if user_id and username:
+                user_records.append({
+                    'id': user_id,
+                    'username': username,
+                    'first_name': user.get('first_name', ''),
+                    'last_name': user.get('last_name', ''),
+                    'email': user.get('email', '')
+                })
+        
+        # Sort by id for consistency
+        user_records.sort(key=lambda x: x['id'])
+        
+        # Save to CSV in current directory
+        df = pd.DataFrame(user_records)
+        df.to_csv(user_list_path, index=False)
+        
+        print(f"✓ Successfully updated {user_list_path} with {len(user_records)} users")
+        
+        # Show sample of users (without email for privacy)
+        if user_records:
+            sample_users = ', '.join([f"{u['username']} (ID:{u['id']})" for u in user_records[:3]])
+            print(f"  Sample users: {sample_users}")
+        
+        return True
+        
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to fetch user list from API: {e}")
+        print(f"Continuing with existing user_list.csv in {os.getcwd()}...")
+        return False
+    except Exception as e:
+        print(f"ERROR: Failed to update user_list.csv: {e}")
+        print(f"Continuing with existing user_list.csv in {os.getcwd()}...")
+        return False
 
 def load_user_list():
     """Load the user list CSV to create a mapping of user IDs to user names and emails"""
+    user_list_path = os.path.join(os.getcwd(), 'user_list.csv')
     try:
-        user_df = pd.read_csv('user_list.csv')
+        user_df = pd.read_csv(user_list_path)
         user_mapping = {}
         for _, row in user_df.iterrows():
             # Create full name from first_name and last_name
@@ -19,10 +135,10 @@ def load_user_list():
                 'full_name': full_name,
                 'email': row.get('email', 'Unknown Email')
             }
-        print(f"Loaded {len(user_mapping)} users from user_list.csv")
+        print(f"Loaded {len(user_mapping)} users from {user_list_path}")
         return user_mapping
     except FileNotFoundError:
-        print("Warning: user_list.csv not found, user names and emails will not be added")
+        print(f"Warning: user_list.csv not found in {os.getcwd()}, user names and emails will not be added")
         return {}
     except Exception as e:
         print(f"Error loading user list: {e}")
@@ -30,13 +146,14 @@ def load_user_list():
 
 def load_tool_list():
     """Load the tool list CSV to create a mapping of tool IDs to tool names"""
+    tool_list_path = os.path.join(os.getcwd(), 'tool_list.csv')
     try:
-        tool_df = pd.read_csv('tool_list.csv')
+        tool_df = pd.read_csv(tool_list_path)
         tool_mapping = dict(zip(tool_df['id'], tool_df['name']))
-        print(f"Loaded {len(tool_mapping)} tools from tool_list.csv")
+        print(f"Loaded {len(tool_mapping)} tools from {tool_list_path}")
         return tool_mapping
     except FileNotFoundError:
-        print("Warning: tool_list.csv not found, tool names will not be added")
+        print(f"Warning: tool_list.csv not found in {os.getcwd()}, tool names will not be added")
         return {}
     except Exception as e:
         print(f"Error loading tool list: {e}")
@@ -104,7 +221,17 @@ def remove_unwanted_columns(data):
 
 def add_tool_names(data, tool_mapping):
     """Add tool names to usage events data based on tool IDs"""
+    unknown_count = 0
+    missing_tool_id_count = 0
+    tool_id_not_in_mapping_count = 0
+    unknown_tool_ids = set()
+    
+    # Always add tool_name column, even if mapping is empty
     if not tool_mapping:
+        print("WARNING: No tool mapping available - all events will be marked as 'Unknown Tool'")
+        for event in data:
+            event['tool_name'] = 'Unknown Tool'
+        print(f"Added tool_name column to {len(data)} events (all marked as Unknown)")
         return data
     
     for event in data:
@@ -113,13 +240,35 @@ def add_tool_names(data, tool_mapping):
             event['tool_name'] = tool_mapping[tool_id]
         else:
             event['tool_name'] = 'Unknown Tool'
+            unknown_count += 1
+            
+            # Track why it's unknown
+            if not tool_id:
+                missing_tool_id_count += 1
+            else:
+                tool_id_not_in_mapping_count += 1
+                unknown_tool_ids.add(tool_id)
     
     print("Added tool names to usage events data")
+    if unknown_count > 0:
+        print(f"  WARNING: {unknown_count} events marked as 'Unknown Tool'")
+        print(f"    - {missing_tool_id_count} events have missing/null tool ID")
+        print(f"    - {tool_id_not_in_mapping_count} events have tool IDs not in mapping")
+        if unknown_tool_ids:
+            print(f"    - Unknown tool IDs: {sorted(unknown_tool_ids)}")
+    
     return data
 
 def add_user_info(data, user_mapping):
     """Add user names and emails to usage events data based on user IDs"""
+    # Always add user columns, even if mapping is empty
     if not user_mapping:
+        print("WARNING: No user mapping available - all events will be marked with 'Unknown User'")
+        for event in data:
+            event['user_username'] = 'Unknown User'
+            event['user_full_name'] = 'Unknown User'
+            event['user_email'] = 'Unknown Email'
+        print(f"Added user columns to {len(data)} events (all marked as Unknown)")
         return data
     
     for event in data:
