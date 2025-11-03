@@ -12,8 +12,8 @@ start_time = time.time()
 load_dotenv()
 token = os.getenv('NEMO_TOKEN')
 
-start_date = '09/01/2025'
-end_date = '09/29/2025'
+start_date = '10/01/2025'
+end_date = '10/31/2025'
 
 
 headers = {
@@ -104,25 +104,6 @@ def process_json_data():
             filtered_df.to_excel(writer, sheet_name=sheet_name, index=False)
     
     print(f"All data has been saved to {current_month_name}_{current_year}_sanity_check.xlsx")
-    # Load the Tool usage spreadsheet
-    df = pd.read_excel(f'{current_month_name}_{current_year}_sanity_check.xlsx', sheet_name='tool_usage_data')
-
-    # Group by user_full_name and sum the quantity
-    user_quantity_df = df.groupby('user_fullname')['amount'].sum().reset_index()
-
-    user_quantity_df['amount'] = user_quantity_df['amount']/60
-
-    tool_quantity_df = df.groupby('name')['amount'].sum().reset_index()
-
-    tool_quantity_df['amount'] = tool_quantity_df['amount']/60
-
-    # Sort by quantity descending
-    user_quantity_df = user_quantity_df.sort_values(by='amount', ascending=False)
-    tool_quantity_df = tool_quantity_df.sort_values(by='amount', ascending=False)
-
-    print(user_quantity_df.head(3))
-    print(tool_quantity_df.head(3))
-
     
     return df
 

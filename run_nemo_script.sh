@@ -63,27 +63,14 @@ if [ $BILLING_EXIT_CODE -ne 0 ]; then
     tail -10 nemo_log.txt
 fi
 
-# Run the usage events script
-echo "[run_nemo_script.sh] Starting usage events script..."
-python usage_questions.py
-USAGE_EXIT_CODE=$?
-
-echo "[run_nemo_script.sh] Usage events script exited with code: $USAGE_EXIT_CODE"
-
-# If the usage events script failed, log the error
-if [ $USAGE_EXIT_CODE -ne 0 ]; then
-    echo "[run_nemo_script.sh] ERROR: Usage events script failed."
-fi
-
 # Final summary
 echo "[run_nemo_script.sh] completed at $(date)"
 echo "[run_nemo_script.sh] Summary:"
 echo "  - Billing script exit code: $BILLING_EXIT_CODE"
-echo "  - Usage events script exit code: $USAGE_EXIT_CODE"
 
-# Exit with error if either script failed
-if [ $BILLING_EXIT_CODE -ne 0 ] || [ $USAGE_EXIT_CODE -ne 0 ]; then
-    echo "[run_nemo_script.sh] ERROR: One or more scripts failed"
+# Exit with error if script failed
+if [ $BILLING_EXIT_CODE -ne 0 ]; then
+    echo "[run_nemo_script.sh] ERROR: Script failed"
     exit 1
 fi
 
