@@ -3,8 +3,12 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Set up PATH for cron (cron has minimal PATH)
+export PATH="/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/adenton/opt/anaconda3/bin:$PATH"
+
 echo "[run_nemo_script.sh] Script started at $(date)"
 echo "[run_nemo_script.sh] Working directory: $(pwd)"
+echo "[run_nemo_script.sh] PATH: $PATH"
 
 # Load environment variables from .env file
 if [ -f .env ]; then
@@ -18,11 +22,8 @@ else
     echo "[run_nemo_script.sh] Please create a .env file with NEMO_TOKEN and GDRIVE_PARENT_ID"
 fi
 
-# Deactivate any existing conda environment first
-if [ -n "$CONDA_DEFAULT_ENV" ]; then
-    echo "[run_nemo_script.sh] Deactivating conda environment: $CONDA_DEFAULT_ENV"
-    conda deactivate 2>/dev/null || true
-fi
+# Note: Conda deactivation skipped in cron (conda is a shell function, not available in cron)
+# The virtual environment activation below will override any conda environment
 
 # Activate virtual environment
 if [ -f .venv/bin/activate ]; then

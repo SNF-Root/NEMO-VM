@@ -13,3 +13,16 @@ Sanity-Env/
 !package.json
 !tsconfig.json
 !*.example.json
+
+*.csv
+*.json
+*.xlsx
+*.pickle
+*.log
+*.txt
+*.csv.gz
+*.json.gz
+*.xlsx.gz
+*.pickle.gz
+*.log.gz
+*.txt.gz

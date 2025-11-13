@@ -12,8 +12,8 @@ start_time = time.time()
 load_dotenv()
 token = os.getenv('NEMO_TOKEN')
 
-start_date = '10/01/2025'
-end_date = '10/31/2025'
+start_date = '11/01/2025'
+end_date = '11/02/2025'
 
 
 headers = {
@@ -26,8 +26,8 @@ def fetch_billing_data():
     #base_url = "https://nemo.stanford.edu/api/reservations/"
     
     try:
-        # Make the GET request
-        response = requests.get(f"{base_url}?start={start_date}&end={end_date}", headers=headers)
+        # Make the GET request with params (automatically URL-encodes dates)
+        response = requests.get(base_url, params={'start': start_date, 'end': end_date}, headers=headers)
         
         # Check if the request was successful
         response.raise_for_status()

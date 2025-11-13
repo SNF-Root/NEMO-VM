@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import time
 import csv
+import shutil
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -99,8 +100,8 @@ def fetch_billing_data(start_date, end_date, token):
     }
     
     try:
-        # Make the GET request
-        response = requests.get(f"{base_url}?start={start_date}&end={end_date}", headers=headers)
+        # Make the GET request with params (automatically URL-encodes dates)
+        response = requests.get(base_url, params={'start': start_date, 'end': end_date}, headers=headers)
         
         # Check if the request was successful
         response.raise_for_status()
@@ -123,8 +124,29 @@ def save_to_csv(data, filename):
         return False
     
     try:
-        # Convert to DataFrame and save to CSV
+        # Convert to DataFrame
         df = pd.DataFrame(data)
+        
+        # Ensure date columns are in a consistent string format that will parse correctly
+        # Convert datetime objects to ISO format strings before saving
+        date_columns = ['start', 'end']
+        for col in date_columns:
+            if col in df.columns:
+                # If it's already a datetime, convert to ISO format string
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    # Ensure it's a Series, not DatetimeIndex
+                    if isinstance(df[col], pd.DatetimeIndex):
+                        df[col] = pd.Series(df[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+                # If it's a string but looks like datetime, try to normalize it
+                elif df[col].dtype == 'object':
+                    # Try parsing and reformatting to ensure consistency
+                    parsed = pd.to_datetime(df[col], errors='coerce', utc=True)
+                    # Convert to Series and then format consistently
+                    parsed_series = pd.Series(parsed.values.astype('datetime64[ns]'))
+                    df[col] = parsed_series.dt.strftime('%Y-%m-%d %H:%M:%S')
+        
         df.to_csv(filename, index=False)
         print(f"Data saved to {filename}")
         return True
@@ -132,8 +154,26 @@ def save_to_csv(data, filename):
         print(f"Error saving to CSV: {e}")
         return False
 
+def save_local_backup(filename):
+    """Save a local backup copy of the file before cleanup"""
+    try:
+        # Create local_backups directory if it doesn't exist
+        backup_dir = "local_backups"
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+            print(f"Created {backup_dir} directory for local backups")
+        
+        # Copy file to backup directory
+        backup_path = os.path.join(backup_dir, filename)
+        shutil.copy2(filename, backup_path)
+        print(f"Local backup saved to {backup_path}")
+        return True
+    except Exception as e:
+        print(f"Error saving local backup: {e}")
+        return False
+
 def cleanup_local_file(filename):
-    """Delete local CSV file after upload"""
+    """Delete local CSV file after upload (but keep local backup)"""
     try:
         os.remove(filename)
         print(f"Local file {filename} deleted successfully")
@@ -153,7 +193,8 @@ def get_date_range():
     """Get the date range for the current month"""
     today = datetime.now()
     start_of_month = today.replace(day=1)
-    end_of_month = today
+    # Use yesterday as end date since billing data may not be available for today yet
+    end_of_month = today - timedelta(days=1)
     
     return start_of_month, end_of_month
 
@@ -179,163 +220,63 @@ def process_month(service, token, year, month, parent_folder_id):
         return
     try:
         upload_to_drive(service, filename, parent_folder_id, filename)
+        save_local_backup(filename)
         cleanup_local_file(filename)
         print(f"Uploaded and cleaned up {filename}")
     except Exception as e:
         print(f"Error uploading {filename}: {e}")
 
 def update_master_csv_for_year(service, token, year, shared_drive_id):
-    """Update the master CSV file for a year with the latest data.
-    Overwrites the last 40 days with the latest data to capture modified usage events."""
+    """Update the master CSV file for a year by fetching the entire year and replacing the file.
+    No filtering - just raw data from the API."""
     print(f"\nUpdating master CSV for {year}...")
+    print(f"📥 Fetching entire year data (no filtering)...")
     
-    # Calculate date range for the last 40 days
-    current = datetime.now()
-    cutoff_date = current - timedelta(days=40)
-    
-    # Determine the date range to fetch
-    if year == current.year:
-        # For current year, fetch last 40 days of data
-        start_date = cutoff_date
-        end_date = current
-    else:
-        # For past years, check if cutoff date falls within the year
-        year_start = datetime(year, 1, 1)
-        year_end = datetime(year, 12, 31)
-        if cutoff_date > year_end:
-            # Cutoff is after this year, no need to update
-            print(f"Year {year} is before the 40-day cutoff window, skipping update")
-            return
-        elif cutoff_date < year_start:
-            # Entire year is within the 40-day window, fetch full year
-            start_date = year_start
-            end_date = year_end
-        else:
-            # Partial year is within the 40-day window
-            start_date = cutoff_date
-            end_date = year_end
-    
-    start_date_str = start_date.strftime('%m/%d/%Y')
-    end_date_str = end_date.strftime('%m/%d/%Y')
-    
-    print(f"Fetching latest data from {start_date_str} to {end_date_str} (replacing last 40 days)...")
-    latest_data = fetch_billing_data(start_date_str, end_date_str, token)
-    
-    if not latest_data:
-        print(f"No new data found for {year}")
-        return
-    
-    print(f"DEBUG: Fetched {len(latest_data)} records for master CSV update")
-    
-    # Create master CSV filename
-    descriptor = get_base_url_descriptor(BASE_URL)
-    master_filename = f"{descriptor}_{year}_master.csv"
-    
-    # Get or create master folder
-    year_folder_id = get_or_create_folder(service, shared_drive_id, str(year))
-    master_folder_id = get_or_create_folder(service, year_folder_id, "Master_CSV")
-    
-    # Check if master CSV already exists
-    query = f"name='{master_filename}' and '{master_folder_id}' in parents"
-    results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    existing_files = results.get('files', [])
-    
-    if existing_files:
-        # Download existing master CSV
-        print("Downloading existing master CSV...")
-        file_id = existing_files[0]['id']
-        request = service.files().get_media(fileId=file_id)
-        
-        with open(master_filename, 'wb') as f:
-            f.write(request.execute())
-        
-        # Read existing data
-        try:
-            existing_df = pd.read_csv(master_filename, low_memory=False)
-            print(f"Loaded existing master CSV with {len(existing_df)} records")
-            
-            # Convert 'start' column to datetime if it exists
-            if 'start' in existing_df.columns:
-                # Handle different date formats that might exist in the CSV
-                # Parse with utc=True to handle mixed timezones, then convert to naive
-                existing_df['start'] = pd.to_datetime(existing_df['start'], errors='coerce', utc=True)
-                
-                # Convert timezone-aware datetimes to naive (remove timezone info)
-                # Convert to naive by converting to numpy datetime64 (which is naive)
-                # This preserves the UTC time values but removes timezone info
-                existing_df['start'] = pd.to_datetime(existing_df['start'].values.astype('datetime64[ns]'))
-                
-                # Remove records from the last 40 days (keep records with invalid dates)
-                initial_count = len(existing_df)
-                # Filter: keep records where start is NaT (invalid) OR start < cutoff_date
-                mask = existing_df['start'].isna() | (existing_df['start'] < cutoff_date)
-                existing_df = existing_df[mask]
-                removed_count = initial_count - len(existing_df)
-                print(f"Removed {removed_count} records from the last 40 days (before {cutoff_date.strftime('%Y-%m-%d')})")
-            else:
-                print("Warning: 'start' column not found in existing CSV, cannot filter by date")
-            
-            # Convert new data to DataFrame
-            new_df = pd.DataFrame(latest_data)
-            
-            # Ensure 'start' column in new_df is datetime for consistency
-            if 'start' in new_df.columns:
-                new_df['start'] = pd.to_datetime(new_df['start'], errors='coerce', utc=True)
-                # Convert timezone-aware datetimes to naive for consistency
-                new_df['start'] = pd.to_datetime(new_df['start'].values.astype('datetime64[ns]'))
-            
-            # Combine dataframes: existing (with last 40 days removed) + new data
-            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            combined_df = combined_df.drop_duplicates()
-            
-            print(f"Combined data: {len(combined_df)} total records ({len(new_df)} records from last 40 days)")
-            
-        except Exception as e:
-            print(f"Error reading existing CSV, creating new one: {e}")
-            combined_df = pd.DataFrame(latest_data)
-    else:
-        # Create new master CSV
-        print("Creating new master CSV...")
-        combined_df = pd.DataFrame(latest_data)
-    
-    # Save updated master CSV
-    if save_to_csv(combined_df.to_dict('records'), master_filename):
-        print(f"Master CSV updated: {master_filename} with {len(combined_df)} total records")
-        
-        try:
-            upload_to_drive(service, master_filename, master_folder_id, master_filename)
-            cleanup_local_file(master_filename)
-            print(f"Master CSV uploaded successfully!")
-        except Exception as e:
-            print(f"Error uploading master CSV: {e}")
-    else:
-        print("Failed to update master CSV")
+    # Simply fetch the entire year and replace the file
+    create_master_csv_for_year(service, token, year, shared_drive_id)
 
-def update_master_master_csv(service, token, shared_drive_id):
-    """Update the master master CSV file with all years' data.
-    Overwrites the last 40 days with the latest data to capture modified usage events."""
+def update_master_master_csv(service, token, shared_drive_id, year):
+    """Update the master master CSV file by using the year master CSV that was just created.
+    No filtering - just raw data. Other years' data is preserved."""
     print(f"\nUpdating master master CSV (all years)...")
     
-    # Calculate date range for the last 40 days
-    current = datetime.now()
-    cutoff_date = current - timedelta(days=40)
-    start_year = 2024  # Start year for billing data
+    # Get the year master CSV from local_backups (it was saved there before cleanup)
+    descriptor = get_base_url_descriptor(BASE_URL)
+    year_master_filename = f"{descriptor}_{year}_master.csv"
+    year_master_path = os.path.join("local_backups", year_master_filename)
     
-    # Fetch last 40 days of data across all years that might be affected
-    start_date = cutoff_date
-    end_date = current
-    
-    start_date_str = start_date.strftime('%m/%d/%Y')
-    end_date_str = end_date.strftime('%m/%d/%Y')
-    
-    print(f"Fetching latest data from {start_date_str} to {end_date_str} (replacing last 40 days)...")
-    latest_data = fetch_billing_data(start_date_str, end_date_str, token)
-    
-    if not latest_data:
-        print(f"No new data found for master master CSV")
-        return
-    
-    print(f"DEBUG: Fetched {len(latest_data)} records for master master CSV update")
+    if not os.path.exists(year_master_path):
+        print(f"⚠️  Year master CSV not found at {year_master_path}")
+        print(f"    Falling back to fetching from API...")
+        # Fallback: fetch from API if local backup doesn't exist
+        current = datetime.now()
+        year_start = datetime(year, 1, 1)
+        if year == current.year:
+            year_end = current
+        else:
+            year_end = datetime(year, 12, 31)
+        
+        start_date_str = year_start.strftime('%m/%d/%Y')
+        end_date_str = year_end.strftime('%m/%d/%Y')
+        
+        print(f"Fetching data from {start_date_str} to {end_date_str}...")
+        current_year_data = fetch_billing_data(start_date_str, end_date_str, token)
+        
+        if not current_year_data:
+            print(f"No data found for {year}")
+            return
+        
+        new_df = pd.DataFrame(current_year_data)
+        print(f"Fetched {len(new_df)} records for {year} from API")
+    else:
+        print(f"📥 Reading {year} data from year master CSV: {year_master_path}")
+        new_df = pd.read_csv(year_master_path, low_memory=False)
+        print(f"    ✓ Loaded {len(new_df):,} records from year master CSV")
+        
+        # Ensure dates are parsed consistently (they come as strings from CSV)
+        if 'start' in new_df.columns:
+            new_df['start'] = pd.to_datetime(new_df['start'], errors='coerce', utc=True)
+            new_df['start'] = pd.to_datetime(new_df['start'].values.astype('datetime64[ns]'))
     
     # Create master master CSV filename
     descriptor = get_base_url_descriptor(BASE_URL)
@@ -360,57 +301,61 @@ def update_master_master_csv(service, token, shared_drive_id):
             existing_df = pd.read_csv(master_master_filename, low_memory=False)
             print(f"Loaded existing master master CSV with {len(existing_df)} records")
             
-            # Convert 'start' column to datetime if it exists
+            # Remove all records from current year (keep other years)
             if 'start' in existing_df.columns:
-                # Handle different date formats that might exist in the CSV
-                # Parse with utc=True to handle mixed timezones, then convert to naive
                 existing_df['start'] = pd.to_datetime(existing_df['start'], errors='coerce', utc=True)
-                
-                # Convert timezone-aware datetimes to naive (remove timezone info)
-                # Convert to naive by converting to numpy datetime64 (which is naive)
-                # This preserves the UTC time values but removes timezone info
                 existing_df['start'] = pd.to_datetime(existing_df['start'].values.astype('datetime64[ns]'))
                 
-                # Remove records from the last 40 days (keep records with invalid dates)
+                # Keep records from other years (or with invalid dates)
                 initial_count = len(existing_df)
-                # Filter: keep records where start is NaT (invalid) OR start < cutoff_date
-                mask = existing_df['start'].isna() | (existing_df['start'] < cutoff_date)
+                # Keep: invalid dates OR year != year (the year we're updating)
+                mask = existing_df['start'].isna() | (existing_df['start'].dt.year != year)
                 existing_df = existing_df[mask]
                 removed_count = initial_count - len(existing_df)
-                print(f"Removed {removed_count} records from the last 40 days (before {cutoff_date.strftime('%Y-%m-%d')})")
+                print(f"Removed {removed_count} records from {year} (keeping {len(existing_df)} records from other years)")
             else:
-                print("Warning: 'start' column not found in existing CSV, cannot filter by date")
+                print("Warning: 'start' column not found, cannot filter by year")
             
-            # Convert new data to DataFrame
-            new_df = pd.DataFrame(latest_data)
-            
-            # Ensure 'start' column in new_df is datetime for consistency
-            if 'start' in new_df.columns:
+            # Ensure new_df dates are also parsed (for consistency)
+            if 'start' in new_df.columns and new_df['start'].dtype == 'object':
                 new_df['start'] = pd.to_datetime(new_df['start'], errors='coerce', utc=True)
-                # Convert timezone-aware datetimes to naive for consistency
                 new_df['start'] = pd.to_datetime(new_df['start'].values.astype('datetime64[ns]'))
             
-            # Combine dataframes: existing (with last 40 days removed) + new data
+            # Combine: other years' data + new year data
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            combined_df = combined_df.drop_duplicates()
             
-            print(f"Combined data: {len(combined_df)} total records ({len(new_df)} records from last 40 days)")
+            # Verify the combined data has the right year
+            if 'start' in combined_df.columns:
+                combined_df['start'] = pd.to_datetime(combined_df['start'], errors='coerce', utc=True)
+                combined_df['start'] = pd.to_datetime(combined_df['start'].values.astype('datetime64[ns]'))
+                year_2025_count = (combined_df['start'].dt.year == year).sum()
+                print(f"Combined data: {len(combined_df)} total records ({len(new_df)} records from {year})")
+                print(f"    Verified: {year_2025_count:,} records with year={year} in combined data")
+            else:
+                print(f"Combined data: {len(combined_df)} total records ({len(new_df)} records from {year})")
             
         except Exception as e:
-            print(f"Error reading existing CSV, creating new one: {e}")
-            combined_df = pd.DataFrame(latest_data)
+            print(f"Error reading existing CSV: {e}")
+            # If we can't read it, just use the year data
+            combined_df = new_df
     else:
-        # Create new master master CSV - this shouldn't normally happen, but handle it
-        print("Warning: Master master CSV not found, creating new one...")
-        print("Consider running create_master_master_csv() first to create initial master master CSV")
-        combined_df = pd.DataFrame(latest_data)
+        # Create new master master CSV with just this year's data
+        print("Master master CSV not found, creating with current year data...")
+        combined_df = new_df
     
     # Save updated master master CSV
     if save_to_csv(combined_df.to_dict('records'), master_master_filename):
         print(f"Master master CSV updated: {master_master_filename} with {len(combined_df)} total records")
         
+        # Print length in a fun color for easy spotting
+        record_count = len(combined_df)
+        print(f"\033[1;36m{'='*60}\033[0m")
+        print(f"\033[1;36m✨ MASTER MASTER CSV LENGTH: {record_count:,} entries ✨\033[0m")
+        print(f"\033[1;36m{'='*60}\033[0m")
+        
         try:
             upload_to_drive(service, master_master_filename, shared_drive_id, master_master_filename)
+            save_local_backup(master_master_filename)
             cleanup_local_file(master_master_filename)
             print(f"Master master CSV uploaded successfully!")
         except Exception as e:
@@ -484,9 +429,16 @@ def create_master_master_csv():
     if save_to_csv(all_data, master_master_filename):
         print(f"\nMaster master CSV created: {master_master_filename} with {len(all_data)} total records")
         
+        # Print length in a fun color for easy spotting
+        record_count = len(all_data)
+        print(f"\033[1;36m{'='*60}\033[0m")
+        print(f"\033[1;36m✨ MASTER MASTER CSV LENGTH: {record_count:,} entries ✨\033[0m")
+        print(f"\033[1;36m{'='*60}\033[0m")
+        
         # Upload to Google Drive in the root (shared_drive_id)
         try:
             upload_to_drive(service, master_master_filename, shared_drive_id, master_master_filename)
+            save_local_backup(master_master_filename)
             cleanup_local_file(master_master_filename)
             print(f"Master master CSV uploaded successfully to root!")
         except Exception as e:
@@ -545,6 +497,7 @@ def create_master_csv_for_year(service, token, year, shared_drive_id):
         
         try:
             upload_to_drive(service, master_filename, master_folder_id, master_filename)
+            save_local_backup(master_filename)
             cleanup_local_file(master_filename)
             print(f"Master CSV uploaded successfully!")
         except Exception as e:
@@ -686,7 +639,8 @@ def main():
     try:
         upload_to_drive(service, filename, target_folder_id, filename)
         
-        # Clean up local file
+        # Save local backup and clean up local file
+        save_local_backup(filename)
         cleanup_local_file(filename)
         
         print("Monthly CSV process completed successfully!")
@@ -695,9 +649,9 @@ def main():
         print("\nUpdating master CSV for current year...")
         update_master_csv_for_year(service, token, start_date.year, shared_drive_id)
         
-        # Update master master CSV (all years)
+        # Update master master CSV (all years) - uses the year master CSV that was just created
         print("\nUpdating master master CSV (all years)...")
-        update_master_master_csv(service, token, shared_drive_id)
+        update_master_master_csv(service, token, shared_drive_id, start_date.year)
         
     except Exception as e:
         print(f"Error uploading to Google Drive: {e}")
@@ -817,7 +771,7 @@ if __name__ == "__main__":
     #update_master_csvs_for_years()
     
     # Uncomment the next line to create master master CSV (all years in root) - run this once initially
-    #create_master_master_csv()
+    create_master_master_csv()
     
     # Uncomment the next line to test master CSV update functionality
     #test_master_csv_update()
